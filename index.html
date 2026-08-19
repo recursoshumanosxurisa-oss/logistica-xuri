@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clasificador de servicio logístico - XURI S.A.</title>
+  
+  <!-- Hojas de estilo externas de Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Archivo CSS local separado -->
+  <link rel="stylesheet" href="style.css">
+  
+  <!-- Firebase SDKs Compat (versión 10.8.0) desde CDN oficial -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+  
+  <!-- SheetJS para procesar archivos Excel de forma local en el navegador -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+  <!-- ================= 1. PANTALLA DE CONFIGURACIÓN INICIAL (FIREBASE SETUP) ================= -->
+  <div id="setup-container" class="card-setup oculto fade-in">
+    <h2>Configuración de Firebase</h2>
+    <p style="font-size: 14px; color: var(--text-muted); text-align: center; margin-bottom: 24px;">
+      El archivo <code>config.js</code> no ha sido configurado aún. Puedes ingresar tu configuración de Firebase a continuación o editar el archivo <code>config.js</code> directamente en tu carpeta de proyecto.
+    </p>
+    <div class="campo">
+      <label for="firebaseConfigInput">Configuración JSON de Firebase</label>
+      <textarea id="firebaseConfigInput" rows="8" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "xuri-logistica.firebaseapp.com",
+  "databaseURL": "https://xuri-logistica.firebaseio.com",
+  "projectId": "xuri-logistica",
+  "storageBucket": "xuri-logistica.appspot.com",
+  "messagingSenderId": "1234567890",
+  "appId": "1:1234..."
+}'></textarea>
+    </div>
+    <button class="btn-action" style="width: 100%;" onclick="guardarSetupFirebase()">Conectar a Firebase</button>
+    
+    <div class="help-box">
+      <strong>¿Dónde encuentro esto?</strong>
+      <ol>
+        <li>Ingresa a tu consola de Firebase.</li>
+        <li>Haz clic en el ícono de engranaje (Configuración del proyecto).</li>
+        <li>En la sección "Tus Apps" (Web), copia el objeto de configuración JavaScript.</li>
+        <li>Pégalo en formato JSON válido (con comillas dobles).</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- ================= 2. PANTALLA DE INICIO DE SESIÓN (LOGIN) ================= -->
+  <div id="login-container" class="card-login oculto fade-in">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <img src="logo-xuri.png" alt="Logo XURI" style="max-height: 80px; width: auto; background: #fff; padding: 4px; border-radius: 8px; border: 1px solid var(--border-color);" onerror="this.style.display='none'">
+      <h2 style="margin-top: 12px; margin-bottom: 4px;">XURI S.A.</h2>
+      <div style="font-size: 13px; color: var(--text-muted); font-weight: 500;">Servicio Logístico & Carga Batch</div>
+    </div>
+    
+    <form id="loginForm">
+      <div class="campo">
+        <label for="loginEmail">Correo electrónico</label>
+        <input type="email" id="loginEmail" placeholder="ejemplo@xuri.com" required autocomplete="username">
+      </div>
+      <div class="campo">
+        <label for="loginPassword">Contraseña</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-action" style="width: 100%; height: 46px;">Iniciar sesión</button>
+    </form>
+    
+    <div id="firstTimeAdminBox" class="help-box oculto" style="border-color: var(--primary); background: var(--primary-light);">
+      <strong>¡Configuración inicial detectada!</strong>
+      <p style="margin: 4px 0 8px 0;">No se encontraron usuarios en tu base de datos. Puedes registrar la primera cuenta de Administrador directamente desde aquí:</p>
+      <button class="btn-action" style="font-size: 12px; padding: 6px 12px; background: var(--bg-dark);" onclick="crearAdminInicial()">Registrar Admin Inicial</button>
+    </div>
+  </div>
+
+  <!-- ================= 3. APLICACIÓN PRINCIPAL (LOGGED IN) ================= -->
+  <main id="main-app" class="oculto">
+    <header class="encabezado">
+      <img class="logo" src="logo-xuri.png" alt="Logo de XURI S.A.">
+      <div>
+        <div class="empresa">XURI S.A.</div>
+        <h1>Clasificador de servicio logístico</h1>
+      </div>
+    </header>
+
+    <!-- Barra de Navegación de Pestañas -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" onclick="cambiarPestaña('clasificador')">Clasificador</button>
+      <button class="tab-btn" onclick="cambiarPestaña('inspector')">Inspector Batch</button>
+      <button class="tab-btn oculto" id="btnTabPromociones" onclick="cambiarPestaña('promociones')">Gestión Promociones</button>
+      <button class="tab-btn oculto" id="btnTabAjustes" onclick="cambiarPestaña('ajustes')">Ajustes</button>
+      <button class="logout-btn" onclick="cerrarSesion()">Cerrar Sesión</button>
+    </nav>
+
+    <!-- CONTENIDO - PESTAÑA 1: CLASIFICADOR (ORIGINAL CON CONEXIÓN DINÁMICA) -->
+    <section id="content-clasificador" class="tab-content fade-in">
+      <p style="margin-top: 0; margin-bottom: 24px; color: var(--text-muted);">
+        Seleccione el sistema e ingrese los datos solicitados para obtener el código de servicio.
+      </p>
+
+      <form id="formulario">
+        <div class="campo">
+          <label for="sistema">Sistema</label>
+          <select id="sistema" required>
+            <option value="">Seleccione una opción</option>
+            <option value="ALEXIS">ALEXIS</option>
+            <option value="VENTAS">VENTAS</option>
+          </select>
+        </div>
+
+        <section id="datosAlexis" class="oculto">
+          <div class="campo">
+            <label for="cliente">Cliente</label>
+            <input id="cliente" type="text" placeholder="Ej.: COMERCIAL SUPER MOTO ZHONG">
+            <div class="nota">Los nombres especiales se reconocen sin importar mayúsculas o minúsculas.</div>
+          </div>
+
+          <div id="datosAlexisNormal" class="oculto">
+            <div class="campo">
+              <label for="provincia">Provincia</label>
+              <input id="provincia" type="text" placeholder="Ej.: GUAYAS">
+            </div>
+            <div class="campo">
+              <label for="montoAlexis">Valor del pedido ($)</label>
+              <input id="montoAlexis" type="number" min="0" step="0.01" placeholder="0.00">
+            </div>
+            <div id="historialAlexis" class="campo oculto">
+              <label for="s04Previo">¿Tiene S-04 en pedidos anteriores mayores a $3000?</label>
+              <select id="s04Previo">
+                <option value="">Seleccione una opción</option>
+                <option value="SI">Sí</option>
+                <option value="NO">No</option>
+              </select>
+            </div>
+          </div>
+          <div id="tipoCajaAlexis" class="campo oculto">
+            <label for="cajaAlexis">Tipo de caja</label>
+            <select id="cajaAlexis">
+              <option value="">Seleccione una opción</option>
+              <option value="SOLO">CAJA SOLO</option>
+              <option value="LIO">CAJAS LIO</option>
+              <option value="MIXTAS">CAJAS MIXTAS</option>
+            </select>
+          </div>
+          <div id="cantidadesMixtas" class="oculto">
+            <div class="campo">
+              <label for="cantidadSolo">Cantidad de cajas SOLO</label>
+              <input id="cantidadSolo" type="number" min="1" step="1" placeholder="0">
+            </div>
+            <div class="campo">
+              <label for="cantidadLio">Cantidad de cajas LIO</label>
+              <input id="cantidadLio" type="number" min="1" step="1" placeholder="0">
+            </div>
+          </div>
+        </section>
+
+        <section id="datosVentas" class="oculto">
+          <div class="campo">
+            <label for="montoVentas">Valor del pedido ($)</label>
+            <input id="montoVentas" type="number" min="0" step="0.01" placeholder="0.00">
+          </div>
+          <div id="servicioVentas" class="campo oculto">
+            <label for="servicio">Servicio</label>
+            <select id="servicio">
+              <option value="">Seleccione una opción</option>
+              <option value="OTRO">Otro servicio</option>
+              <option value="LAAR">LAAR</option>
+              <option value="TRAMACO">TRAMACO</option>
+            </select>
+          </div>
+          <div id="destinoLaar" class="campo oculto">
+            <label for="destinoLaarSelect">Destino / tipo</label>
+            <select id="destinoLaarSelect">
+              <option value="">Seleccione una opción</option>
+              <option value="ORIENTE">ORIENTE</option>
+              <option value="ESPECIAL">ESPECIAL</option>
+              <option value="PSG">P / S / G</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+          <div id="tipoTramaco" class="campo oculto">
+            <label for="tipoTramacoSelect">Tipo de TRAMACO</label>
+            <select id="tipoTramacoSelect">
+              <option value="">Seleccione una opción</option>
+              <option value="TE">TE</option>
+              <option value="TD">TD</option>
+              <option value="CP">CP</option>
+              <option value="OTRO">Otro</option>
+            </select>
+          </div>
+        </section>
+
+        <button type="submit">Calcular código</button>
+      </form>
+
+      <section id="resultado" class="oculto" aria-live="polite">
+        <div style="font-size: 13px; font-weight: 700; color: #856404; text-transform: uppercase;">Código asignado</div>
+        <div id="codigo"></div>
+        <div id="explicacion"></div>
+      </section>
+    </section>
+
+    <!-- CONTENIDO - PESTAÑA 2: INSPECTOR BATCH -->
+    <section id="content-inspector" class="tab-content oculto fade-in">
+      <h2 style="margin-top:0; font-size: 20px;">Inspector de Pedido Batch (Excel)</h2>
+      <p style="color: var(--text-muted); margin-bottom: 24px;">
+        Arrastre o seleccione el archivo de pedidos para revisar discrepancias en los precios de productos con promoción.
+      </p>
+
+      <div class="drop-zone" id="excelDropZone" onclick="$('excelFileInput').click()">
+        <span class="drop-zone-icon">📊</span>
+        <p id="dropZoneText">Arrastre el archivo Excel aquí o haga clic para buscar</p>
+        <input type="file" id="excelFileInput" style="display:none;" accept=".xlsx, .xls">
+      </div>
+
+      <div id="inspectorResultados" class="oculto">
+        <div class="resumen-inspeccion">
+          <div class="resumen-card total">
+            <div>Productos Analizados</div>
+            <div id="summaryTotalCount" class="resumen-value">0</div>
+          </div>
+          <div class="resumen-card advertencias">
+            <div>Advertencias (Sin precio)</div>
+            <div id="summaryWarningsCount" class="resumen-value">0</div>
+          </div>
+          <div class="resumen-card alertas-criticas">
+            <div>Alertas Críticas (Precio Incorrecto)</div>
+            <div id="summaryAlertsCount" class="resumen-value">0</div>
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+          <h3 style="margin: 0; font-size: 16px;">Reporte de la Inspección</h3>
+          <label style="display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 500; cursor: pointer;">
+            <input type="checkbox" id="chkShowOnlyAlerts" style="width: auto; margin:0;" onchange="filtrarResultadosBatch()">
+            Mostrar solo alertas y promociones
+          </label>
+        </div>
+
+        <div class="table-container">
+          <table id="tblInspector">
+            <thead>
+              <tr>
+                <th style="width: 60px;">Fila</th>
+                <th>Código</th>
+                <th>Descripción</th>
+                <th>Precio Batch</th>
+                <th>Precio Promo</th>
+                <th>Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Se rellena dinámicamente -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONTENIDO - PESTAÑA 3: GESTIÓN DE PROMOCIONES (ADMIN) -->
+    <section id="content-promociones" class="tab-content oculto fade-in">
+      <h2 style="margin-top:0; font-size: 20px;">Gestión de Productos en Promoción</h2>
+      <p style="color: var(--text-muted); margin-bottom: 24px;">
+        Agregue, edite o elimine los códigos de producto que tienen promoción este mes.
+      </p>
+
+      <!-- Formulario para agregar/editar promoción -->
+      <div style="background: #f8fafc; border: 1px solid var(--border-color); padding: 20px; border-radius: 12px; margin-bottom: 28px;">
+        <h3 id="formPromoTitle" style="margin-top:0; margin-bottom: 16px; font-size: 15px;">Añadir nuevo producto promocional</h3>
+        <input type="hidden" id="editPromoKey">
+        
+        <div class="form-row">
+          <div>
+            <label for="promoCodigo">Código (Código de Barras / Ref)</label>
+            <input type="text" id="promoCodigo" placeholder="Ej.: HR-1001004L">
+          </div>
+          <div>
+            <label for="promoPrecio">Precio Promocional ($)</label>
+            <input type="number" id="promoPrecio" step="0.01" min="0" placeholder="0.00">
+          </div>
+        </div>
+        <div class="campo">
+          <label for="promoDescripcion">Descripción</label>
+          <input type="text" id="promoDescripcion" placeholder="Ej.: CASCO INTEGRAL HORUX L KILLER CAT BLANCO">
+        </div>
+        
+        <div style="display: flex; gap: 12px;">
+          <button class="btn-action" id="btnGuardarPromo" onclick="guardarPromocion()">Agregar Promoción</button>
+          <button class="btn-action oculto" id="btnCancelarEditPromo" style="background: #e2e8f0; color: #475569;" onclick="cancelarEdicionPromo()">Cancelar</button>
+          
+          <button class="btn-action" style="margin-left: auto; background: #e2e8f0; color: #475569;" onclick="$('txtAreaImportBatch').classList.toggle('oculto')">Carga Rápida (Pegar de Excel)</button>
+        </div>
+
+        <!-- Textarea para pegado rápido de Excel -->
+        <div id="txtAreaImportBatch" class="campo oculto" style="margin-top: 18px; border-top: 1px solid var(--border-color); padding-top: 18px;">
+          <label for="txtCargaRapida">Pegar datos de Excel (Columnas: Código | Descripción | Precio)</label>
+          <textarea id="txtCargaRapida" rows="6" placeholder="HR-1001004L	CASCO INTEGRAL BLANCO	15.00&#10;HR-1001003L	CASCO INTEGRAL NEGRO	15.00"></textarea>
+          <div class="nota">Copie las columnas desde Excel y péguelas arriba (separadas por tabulaciones).</div>
+          <button class="btn-action" style="margin-top: 12px; width: auto;" onclick="procesarCargaRapidaPromos()">Procesar Carga Rápida</button>
+        </div>
+      </div>
+
+      <!-- Buscador y Tabla de listado de promociones -->
+      <div class="search-bar">
+        <input type="text" id="searchPromosInput" placeholder="🔍 Buscar por código o descripción..." oninput="renderListaPromociones()">
+      </div>
+
+      <div class="table-container">
+        <table id="tblPromociones">
+          <thead>
+            <tr>
+              <th>Código</th>
+              <th>Descripción</th>
+              <th>Precio Promo ($)</th>
+              <th style="width: 100px; text-align: center;">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Se rellena dinámicamente -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- CONTENIDO - PESTAÑA 4: AJUSTES DE REGLAS (ADMIN) -->
+    <section id="content-ajustes" class="tab-content oculto fade-in">
+      <h2 style="margin-top:0; font-size: 20px;">Ajustes de Reglas del Sistema</h2>
+      <p style="color: var(--text-muted); margin-bottom: 24px;">
+        Configure las reglas y parámetros dinámicos que utiliza el Clasificador de servicio logístico.
+      </p>
+
+      <div class="campo">
+        <label for="cfgMontoLimite">Monto Límite del Pedido ($)</label>
+        <input type="number" id="cfgMontoLimite" min="0" placeholder="3000">
+        <div class="nota">Monto a partir del cual se valida el historial S-04 en ALEXIS y se fuerza S-04 en VENTAS.</div>
+      </div>
+
+      <div class="campo">
+        <label for="cfgClientesS04">Clientes con Código Directo S-04 (Uno por línea)</label>
+        <textarea id="cfgClientesS04" rows="4" placeholder="COMERCIAL SUPER MOTO ZHONG&#10;GRAN MURALLA"></textarea>
+      </div>
+
+      <div class="campo">
+        <label for="cfgClientesCaja">Clientes que muestran Caja directamente (Uno por línea)</label>
+        <textarea id="cfgClientesCaja" rows="3" placeholder="MEGA MOTO STEVEN"></textarea>
+      </div>
+
+      <div class="campo">
+        <label for="cfgProvinciasCaja">Provincias que requieren validación de Caja (Una por línea)</label>
+        <textarea id="cfgProvinciasCaja" rows="4" placeholder="GUAYAS&#10;EL ORO&#10;MANABI&#10;LOS RIOS"></textarea>
+      </div>
+
+      <div style="display: flex; gap: 12px; margin-bottom: 30px;">
+        <button class="btn-action" onclick="guardarAjustesConfig()">Guardar Ajustes en Firebase</button>
+      </div>
+
+      <!-- Configuración técnica de Firebase -->
+      <div style="border-top: 1px solid var(--border-color); padding-top: 24px;">
+        <h3 style="margin-top:0; font-size: 16px;">Operadores del Sistema</h3>
+        <p style="font-size:13px; color: var(--text-muted); margin-bottom: 16px;">Registre las cuentas que podrán ingresar al sistema.</p>
+        
+        <div class="form-row">
+          <div>
+            <label for="newUserEmail">Correo del Operador</label>
+            <input type="email" id="newUserEmail" placeholder="operador2@xuri.com">
+          </div>
+          <div>
+            <label for="newUserPassword">Contraseña</label>
+            <input type="password" id="newUserPassword" placeholder="••••••••">
+          </div>
+        </div>
+        <div class="campo">
+          <label for="newUserRole">Rol</label>
+          <select id="newUserRole">
+            <option value="operador">Operador (Solo Clasificador e Inspector)</option>
+            <option value="admin">Administrador (Control Total)</option>
+          </select>
+        </div>
+        <button class="btn-action" style="background:#475569;" onclick="registrarNuevoOperador()">Registrar Operador</button>
+      </div>
+
+      <div style="border-top: 1px solid var(--border-color); padding-top: 24px; margin-top: 24px;">
+        <h3 style="margin-top:0; font-size: 16px; color: var(--danger);">Zona de peligro</h3>
+        <p style="font-size:13px; color: var(--text-muted); margin-bottom:12px;">Desconectar el navegador del proyecto actual de Firebase para ingresar nuevas credenciales.</p>
+        <button class="btn-action" style="background: var(--danger);" onclick="desconectarFirebase()">Desconectar Base de Datos</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    XURI S.A. &copy; 2026 - Clasificador Logístico e Inspección Batch
+  </footer>
+
+  <!-- Carga del archivo de configuración de Firebase -->
+  <script src="config.js"></script>
+  <!-- Carga del archivo lógico de la aplicación -->
+  <script src="app.js"></script>
+</body>
+</html>
