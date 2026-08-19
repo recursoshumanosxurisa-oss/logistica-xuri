@@ -594,7 +594,6 @@ function analizarFilasExcel(rows) {
 
   // Actualizar resumen
   $('summaryTotalCount').textContent = totalCount;
-  $('summaryWarningsCount').textContent = warningsCount;
   $('summaryAlertsCount').textContent = alertsCount;
   
   $('inspectorResultados').classList.remove('oculto');
