@@ -251,7 +251,9 @@ function llenarPanelAjustesInputs() {
   if ($('cfgMontoLimite')) {
     $('cfgMontoLimite').value = activeConfig.montoLimite;
     $('cfgClientesS04').value = activeConfig.clientesS04.join('\n');
-    $('cfgClientesCaja').value = activeConfig.clientesCaja.join('\n');
+    if ($('cfgClientesCaja')) {
+      $('cfgClientesCaja').value = activeConfig.clientesCaja.join('\n');
+    }
     $('cfgProvinciasCaja').value = activeConfig.provinciasConCaja.join('\n');
   }
 }
@@ -260,7 +262,7 @@ function guardarAjustesConfig() {
   const configObj = {
     montoLimite: Number($('cfgMontoLimite').value) || 3000,
     clientesS04: $('cfgClientesS04').value.split('\n').map(x => x.trim()).filter(Boolean),
-    clientesCaja: $('cfgClientesCaja').value.split('\n').map(x => x.trim()).filter(Boolean),
+    clientesCaja: activeConfig.clientesCaja || ['MEGA MOTO STEVEN'],
     provinciasConCaja: $('cfgProvinciasCaja').value.split('\n').map(x => x.trim()).filter(Boolean)
   };
 
@@ -570,10 +572,10 @@ function analizarFilasExcel(rows) {
       precioPromo = Number(promoItem.precio);
       
       if (precioCargado === null || isNaN(precioCargado) || precioCargado === 0) {
-        status = 'WARN'; 
-        warningsCount++;
+        status = 'CRITIC_NO_PRICE'; // Alerta roja: Es una promoción pero viene sin precio
+        alertsCount++;
       } else if (Math.abs(precioCargado - precioPromo) > 0.009) {
-        status = 'CRITIC'; 
+        status = 'CRITIC_BAD_PRICE'; // Alerta roja: Precio cargado difiere de la promoción
         alertsCount++;
       } else {
         status = 'OK'; 
@@ -619,8 +621,8 @@ function filtrarResultadosBatch() {
   filasFiltradas.forEach(r => {
     let badgeHtml = '';
     if (r.status === 'OK') badgeHtml = '<span class="badge correcto">Promo OK</span>';
-    else if (r.status === 'WARN') badgeHtml = '<span class="badge advertencia">Precio vacío</span>';
-    else if (r.status === 'CRITIC') badgeHtml = '<span class="badge critico">Precio Incorrecto</span>';
+    else if (r.status === 'CRITIC_NO_PRICE') badgeHtml = '<span class="badge critico">Promoción</span>'; // Advertencia convertida a Alerta Crítica (color rojo)
+    else if (r.status === 'CRITIC_BAD_PRICE') badgeHtml = '<span class="badge critico">Precio Incorrecto</span>';
     else badgeHtml = '<span class="badge info">Regular</span>';
 
     const tr = document.createElement('tr');
